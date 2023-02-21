@@ -37,4 +37,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
 
 	List<Invoice> getAllInvoiceBySubsidiaryIdAndSupplierIdAndCurrency(@Param("subsidiaryId") Long subsidiaryId,@Param("supplierId") Long supplierId,
 			@Param("currency")String currency);
+
+
+	public List<Invoice> findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, String integratedId,
+			java.sql.Date startDate, java.sql.Date endDate);
 }

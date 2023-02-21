@@ -1,6 +1,7 @@
 package com.monstarbill.finance.feignclients;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -139,4 +140,23 @@ public interface ProcureServiceClient {
 		logger.error("Exception : " + exception.getLocalizedMessage());
 		return null;
 	}
+	
+	
+	/**
+	 * get po by number
+	 * 
+	 * @param number
+	 * @return
+	 */
+	@GetMapping("/po/find-by-po-number")
+	@Retry(name = "procure-ws")
+	@CircuitBreaker(name = "procure-ws", fallbackMethod = "findByPoNumberFallback")
+	public Optional<PurchaseOrder> findByPoNumber(@RequestParam("poNumber") String poNumber);
+
+	default Optional<PurchaseOrder> findByPoNumberFallback(String poNumber, Throwable exception) {
+		logger.error("Getting exception from MS to findByPoNumberFallback. ");
+		logger.error("Exception : " + exception.getLocalizedMessage());
+		return null;
+	}
+	
 }

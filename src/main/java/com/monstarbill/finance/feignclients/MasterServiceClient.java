@@ -2,6 +2,7 @@ package com.monstarbill.finance.feignclients;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import com.monstarbill.finance.models.Bank;
+import com.monstarbill.finance.models.Employee;
 import com.monstarbill.finance.models.Item;
 import com.monstarbill.finance.models.Location;
 import com.monstarbill.finance.models.Supplier;
@@ -302,7 +304,7 @@ public interface MasterServiceClient {
 	@CircuitBreaker(name = "masters-ws", fallbackMethod = "findSupplierByIdFallback")
 	public Supplier findSupplierById(@RequestParam("id") Long id);
 
-	default Supplier findByIdFallback(Long id, Throwable exception) {
+	default Supplier findSupplierByIdFallback(Long id, Throwable exception) {
 		logger.error("Getting exception from MS to findSupplierByIdFallback. ");
 		logger.error("Exception : " + exception.getLocalizedMessage());
 		return null;
@@ -325,4 +327,41 @@ public interface MasterServiceClient {
 		logger.error("Exception : " + exception.getLocalizedMessage());
 		return null;
 	}
+	
+	/**
+	 * get employee by it's id
+	 * 
+	 * @param id
+	 * @return employee
+	 */
+
+	@GetMapping("/employee/get")
+	@Retry(name = "masters-ws")
+	@CircuitBreaker(name = "masters-ws", fallbackMethod = "getEmployeeByIdFallback")
+	public Employee getEmployeeById(@RequestParam("id") Long id);
+
+	default Employee getEmployeeByIdFallback(Long id, Throwable exception) {
+		logger.error("Getting exception from MS to getEmployeeByIdFallback. ");
+		logger.error("Exception : " + exception.getLocalizedMessage());
+		return null;
+	}
+	
+	/**
+	 * get employee by it's id
+	 * 
+	 * @param id
+	 * @return employee
+	 */
+
+	@GetMapping("/item/find-by-item-description")
+	@Retry(name = "masters-ws")
+	@CircuitBreaker(name = "masters-ws", fallbackMethod = "findByItemDescriptionIdFallback")
+	public Optional<Item> findByItemDescription(@RequestParam("description") String description);
+
+	default Optional<Item> findByItemDescriptionIdFallback(@RequestParam String description, Throwable exception) {
+		logger.error("Getting exception from MS to findByItemDescriptionIdFallback. ");
+		logger.error("Exception : " + exception.getLocalizedMessage());
+		return null;
+	}
+	
 }

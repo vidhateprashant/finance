@@ -1,5 +1,6 @@
 package com.monstarbill.finance.controllers;
 
+import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,7 +14,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -36,7 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @RestController
 @RequestMapping("/invoice")
-@CrossOrigin(origins = "*", allowedHeaders = "*", maxAge = 4800, allowCredentials = "false")
+//@CrossOrigin(origins = "*", allowedHeaders = "*", maxAge = 4800, allowCredentials = "false")
 public class InvoiceController {
 	
 	@Autowired
@@ -185,5 +185,16 @@ public class InvoiceController {
 			}
 		}
 		return null;
+	}
+	
+	@GetMapping("/get-subsidiary-id-and-date-between")
+	public ResponseEntity<List<Invoice>> findByIdAndIntegratedIdAndCreatedDateBetween(@RequestParam Long subsidiaryId, @RequestParam Date startDate, @RequestParam Date endDate) {
+		log.info("Get invoice List By invoiceId and date between . STARTED ... ");
+		List<Invoice> invoice = invoiceService.getIdAndIntegratedIdAndCreatedDateBetween(subsidiaryId, startDate, endDate);
+		if (invoice == null) {
+			return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+		}
+		log.info("Get invoice List By invoiceId and date between. FINISHED ... ");
+		return new ResponseEntity<>(invoice, HttpStatus.OK);
 	}
 }

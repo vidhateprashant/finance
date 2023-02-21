@@ -72,7 +72,7 @@ public interface SetupServiceClient {
 	@CircuitBreaker(name = "setup-ws", fallbackMethod = "getSubsidiaryByIdFallback")
 	public Subsidiary getSubsidiaryById(@RequestParam("id") Long id);
 
-	default Subsidiary getByIdFallback(Long id, Throwable exception) {
+	default Subsidiary getSubsidiaryByIdFallback(Long id, Throwable exception) {
 		logger.error("Getting exception from MS to getSubsidiaryByIdFallback. ");
 		logger.error("Exception : " + exception.getLocalizedMessage());
 		return null;

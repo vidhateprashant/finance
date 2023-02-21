@@ -1234,4 +1234,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 			throw new CustomException("Something went wrong. Please Contact Administrator..");
 		}
 	}
+
+	@Override
+	public List<Invoice> getIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, java.sql.Date startDate,
+			java.sql.Date endDate) {
+		List<Invoice> optInvoice = invoiceRepository.findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(
+				subsidiaryId, null, startDate, endDate);
+		return optInvoice;
+	}
+
+	
 }

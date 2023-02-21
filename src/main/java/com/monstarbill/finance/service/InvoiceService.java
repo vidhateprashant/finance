@@ -1,5 +1,6 @@
 package com.monstarbill.finance.service;
 
+import java.sql.Date;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
@@ -35,5 +36,7 @@ public interface InvoiceService {
 	public byte[] downloadTemplate();
 
 	public byte[] upload(MultipartFile file);
+
+	List<Invoice> getIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, Date startDate, Date endDate);
 	
 }
