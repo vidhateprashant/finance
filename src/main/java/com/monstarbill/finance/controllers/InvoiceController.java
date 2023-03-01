@@ -144,6 +144,14 @@ public class InvoiceController {
 		return new ResponseEntity<>(isAllApproved, HttpStatus.OK);
 	}
 	
+	@GetMapping("/self-approve")
+	public ResponseEntity<Boolean> selfApprove(@RequestParam Long invoiceId) {
+		log.info("Self approve for invoice ID :: " + invoiceId);
+		Boolean isApproved = this.invoiceService.selfApprove(invoiceId);
+		log.info("Self approve for invoice id Finished");
+		return new ResponseEntity<>(isApproved, HttpStatus.OK);
+	}
+	
 	/**
 	 * download excel for invoice
 	 * 
@@ -196,5 +204,28 @@ public class InvoiceController {
 		}
 		log.info("Get invoice List By invoiceId and date between. FINISHED ... ");
 		return new ResponseEntity<>(invoice, HttpStatus.OK);
+	}
+	
+	/**
+	 * Get invoice list for approval
+	 * 
+	 * @Param user or user
+	 * @return list of invoice
+	 * 
+	 */
+
+	@GetMapping("/get-invoice-approval")
+	public ResponseEntity<List<Invoice>> getApprovalProcess(@RequestParam String user) {
+		List<Invoice> invoice = new ArrayList<Invoice>();
+		try {
+			invoice = invoiceService.getInvoiceApproval(user);
+			log.info("Getting the invoice for approval " + invoice);
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw new CustomException(
+					"Exception while getting the approval process for the Invoice :: " + e.toString());
+		}
+		return ResponseEntity.ok(invoice);
+
 	}
 }

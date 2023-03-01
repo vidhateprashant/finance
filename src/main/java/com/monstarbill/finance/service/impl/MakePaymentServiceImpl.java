@@ -471,6 +471,7 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 		Long paymentId = null;
 		String paymentNumber = null;
 		if (makePayment.getId() == null) {
+			makePayment.setStatus(TransactionStatus.OPEN.getTransactionStatus());
 			makePayment.setCreatedBy(CommonUtils.getLoggedInUsername());
 			String transactionalDate = CommonUtils.convertDateToFormattedString(makePayment.getPaymentDate());
 

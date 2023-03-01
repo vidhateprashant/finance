@@ -16,8 +16,6 @@ import com.monstarbill.finance.models.Invoice;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpecificationExecutor {
 
-	
-	
 	List<Invoice> getAllInvoiceBySubsidiaryIdAndSupplierId(@Param("subsidiaryId") Long subsidiaryId,@Param("supplierId") Long supplierId);
 
 	List<Invoice> getAllInvoiceBySupplierId(Long supplierId);
@@ -41,4 +39,13 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
 
 	public List<Invoice> findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, String integratedId,
 			java.sql.Date startDate, java.sql.Date endDate);
+	
+	@Query("select new com.monstarbill.finance.models.Invoice(i.id,i.invoiceDate, i.invoiceNo, i.amount, i.taxAmount, i.totalAmount, "
+			+ " i.approvedBy, i.nextApprover, i.nextApproverRole, i.invStatus, l.locationName, s.name as subsidiaryName , sup.name as supplierName,i.rejectComment,i.supplierId,i.subsidiaryId,i.locationId,e.fullName) from Invoice i "
+			+ "inner join Supplier sup on sup.id = i.supplierId " 
+			+ "inner join Subsidiary s on s.id = i.subsidiaryId  "
+			+ "inner join Location l on l.id = i.locationId "
+			+ "left join Employee e on CAST(e.id as text) = i.approvedBy where i.invStatus in :status AND i.nextApprover = :user")
+	public List<Invoice> getInvoiceForApproval(@Param("status")List<String> status,@Param("user")String user);
+
 }

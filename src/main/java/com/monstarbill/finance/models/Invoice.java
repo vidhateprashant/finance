@@ -36,7 +36,7 @@ public class Invoice implements Cloneable {
     private Long invoiceId;
 	
 	private Long supplierId, subsidiaryId, poId, locationId, billToId, shipToId;
-	private String invoiceNo, invStatus, paymentTerm, integratedId, currency, billTo, shipTo, invoiceCode, invoiceSupplyNumber, taxRegNumber;
+	private String invoiceNo, invStatus, paymentTerm, integratedId, currency, billTo, shipTo, invoiceCode, rejectComment, invoiceSupplyNumber, taxRegNumber;
 	private Date invoiceDate, dueDate;
 	private double fxRate, amount, taxAmount, totalAmount, paymentAmount, amountDue;
 
@@ -101,6 +101,12 @@ public class Invoice implements Cloneable {
 	@Transient
 	private List<InvoicePayment> invoicePayments;
 	
+	@Transient
+	private String approvedByName;
+	
+	@Transient
+	private String locationName;
+	
 	private String createdBy, lastModifiedBy;
 	
 	@CreationTimestamp
@@ -121,6 +127,30 @@ public class Invoice implements Cloneable {
 		
 	}
 	
+	public Invoice(Long id, Date invoiceDate, String invoiceNo, double amount, double taxAmount, double totalAmount,
+			String approvedBy, String nextApprover, String nextApproverRole, String invStatus, String locationName,
+			String subsidiaryName, String supplierName, String rejectComment, Long supplierId, Long subsidiaryId,
+			Long locationId, String approvedByName) {
+		this.invoiceId = id;
+		this.invoiceDate = invoiceDate;
+		this.invoiceNo = invoiceNo;
+		this.amount = amount;
+		this.taxAmount = taxAmount;
+		this.totalAmount = totalAmount;
+		this.approvedBy = approvedBy;
+		this.nextApprover = nextApprover;
+		this.nextApproverRole = nextApproverRole;
+		this.invStatus = invStatus;
+		this.locationName = locationName;
+		this.subsidiaryName = subsidiaryName;
+		this.supplierName = supplierName;
+		this.rejectComment = rejectComment;
+		this.supplierId = supplierId;
+		this.subsidiaryId = subsidiaryId;
+		this.locationId = locationId;
+		this.approvedByName = approvedByName;
+	}
+
 	@Override
 	public Object clone() throws CloneNotSupportedException {
 		return super.clone();

@@ -38,5 +38,9 @@ public interface InvoiceService {
 	public byte[] upload(MultipartFile file);
 
 	List<Invoice> getIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, Date startDate, Date endDate);
+
+	Boolean selfApprove(Long invoiceId);
+	
+	List<Invoice> getInvoiceApproval(String user);
 	
 }

@@ -145,6 +145,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		Optional<Invoice> oldInvoice = Optional.empty();
 		Long invoiceId = invoice.getInvoiceId();
 		if(invoiceId==null)	{
+			invoice.setInvStatus(TransactionStatus.OPEN.getTransactionStatus());
 			invoice.setTotalPaidAmount(0.0);
 			invoice.setAmountDue(invoice.getTotalAmount());
 			invoice.setCreatedBy(CommonUtils.getLoggedInUsername());
@@ -228,7 +229,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 //				purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(),invoiceItem.getItemId());
 				purchaseOrderItem
 						.setUnbilledQuantity(purchaseOrderItem.getUnbilledQuantity() - invoiceItem.getBillQty());
-				if(purchaseOrderItem.getUnbilledQuantity() == invoiceItem.getBillQty()) {
+				if(purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
 				}else {
 					purchaseOrderItem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
@@ -237,6 +238,12 @@ public class InvoiceServiceImpl implements InvoiceService {
 			}
 			if((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() != null)) {
 				grnitem.setUnbilledQuantity(grnitem.getUnbilledQuantity() - invoiceItem.getBillQty());
+				
+				if(grnitem.getUnbilledQuantity() == 0) {
+					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
+				}else {
+					grnitem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
+				}
 				this.procureServiceClient.saveGrnItemObject(grnitem);
 			}			
 			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
@@ -260,7 +267,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					throw new CustomException("Recieved quantity should be less than or equals to remained quantity.");
 				}
 				purchaseOrderItem.setUnbilledQuantity(remainedQuantity);
-				if(purchaseOrderItem.getUnbilledQuantity() == invoiceItem.getBillQty()) {
+				if(purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
 				}else {
 					purchaseOrderItem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
@@ -277,6 +284,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 				if (remainedQuantityForGrn < 0) {
 					throw new CustomException("Recieved quantity should be less than or equals to remained quantity.");
 			}
+				if(grnitem.getUnbilledQuantity() == 0) {
+					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
+				}else {
+					grnitem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
+				}
 				this.procureServiceClient.saveGrnItemObject(grnitem);
 		}
 //		if (invoiceItem.getGrnId() != null) {
@@ -1241,6 +1253,31 @@ public class InvoiceServiceImpl implements InvoiceService {
 		List<Invoice> optInvoice = invoiceRepository.findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(
 				subsidiaryId, null, startDate, endDate);
 		return optInvoice;
+	}
+
+	@Override
+	public Boolean selfApprove(Long invoiceId) {
+		Optional<Invoice> invoice = this.invoiceRepository.findByInvoiceId(invoiceId);
+		
+		if (!invoice.isPresent()) {
+			log.error("Invoice Not Found against given invoice id : " + invoiceId);
+			throw new CustomMessageException("Invoice Not Found against given invoice id : " + invoiceId);
+		}
+		invoice.get().setInvStatus(TransactionStatus.APPROVED.getTransactionStatus());
+		invoice.get().setLastModifiedBy(CommonUtils.getLoggedInUsername());
+		
+		if (this.invoiceRepository.save(invoice.get()) != null) return true;
+		else throw new CustomException("Error in self approve. Please contact System Administrator");
+	}
+	
+	@Override
+	public List<Invoice> getInvoiceApproval(String user) {
+		List<String> status = new ArrayList<String>();
+		status.add(TransactionStatus.PENDING_APPROVAL.getTransactionStatus());
+		status.add(TransactionStatus.PARTIALLY_APPROVED.getTransactionStatus());
+		List<Invoice> invoices = new ArrayList<Invoice>();
+		invoices = invoiceRepository.getInvoiceForApproval(status, user);
+		return invoices;
 	}
 
 	
