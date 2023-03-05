@@ -601,10 +601,13 @@ public class AdvancePaymentServiceImpl implements AdvancePaymentService {
 				}
 			}
 		}
+		if ((advancePayment.getUnappliedAmount() < advancePayment.getPaymentAmount()) && (advancePayment.getUnappliedAmount() > 0)) {
+			advancePayment.setStatus(TransactionStatus.PARTIALLY_APPLIED.getTransactionStatus());
+		} else
+			advancePayment.setStatus(TransactionStatus.APPLIED.getTransactionStatus());
+
 		advancePayment.setLastModifiedBy(CommonUtils.getLoggedInUsername());
 		advancePayment.setType("Advance Payment");
-		advancePayment.setStatus(TransactionStatus.OPEN.getTransactionStatus());
-
 		AdvancePayment savedAdvancePayment;
 		try {
 			savedAdvancePayment = this.advancePaymentRepository.save(advancePayment);

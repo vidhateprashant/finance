@@ -34,5 +34,6 @@ public interface AdvancePaymentRepository extends JpaRepository<AdvancePayment, 
 	public List<AdvancePayment> findByIntegratedIdAndSubsidiaryIdAndCreatedDateBetween(String integratedId,
 			Long subsidiaryId, Date startDate, Date endDate);
 
+	public List<AdvancePayment> getByIdAndType(Long paymentId, String type);
 
 }

@@ -25,6 +25,10 @@ public enum TransactionStatus {
 	FULLY_RETURNED("Fully Returned"),
 	VOID("Voided"),
 	BILLED("Billed"),
+	PARTIALLY_PAID("Partially Paid"),
+	PAID("Paid"),
+	PARTIALLY_APPLIED("Partially applied"),
+	APPLIED("Applied"),
 	PARTIALLY_BILLED("Partially Billed");
 	
 	// constructor

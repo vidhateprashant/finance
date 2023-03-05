@@ -91,6 +91,10 @@ public class Grn implements Cloneable {
 	private String reciver;
 	
 	private String status;
+	
+	private String billStatus;
+	
+	private String rtvStatus;
 
 	@Column(name = "netsuite_id")
 	private String netsuiteId;

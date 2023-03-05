@@ -457,7 +457,13 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 				}
 				MakePaymentLists = this.makePaymentListRepository.saveAll(MakePaymentLists);
 			} else if (FormNames.ADVANCE_PAYMENT.getFormName().equalsIgnoreCase(type)) {
-				// TODO confirm from Amar
+				List<AdvancePayment> advancePayments = this.advancePaymentRepository.getByIdAndType(paymentId, type);
+				for (AdvancePayment advancePayment : advancePayments) {
+					advancePayment.setPaymentAmount(0.0);
+					advancePayment.setUnappliedAmount(advancePayment.getAdvanceAmount());
+					advancePayment.setStatus(TransactionStatus.APPROVED.getTransactionStatus());
+				}
+				this.advancePaymentRepository.saveAll(advancePayments);
 			}
 		}
 		invoicePayments = this.invoicePaymentRepository.saveAll(invoicePayments);
@@ -518,6 +524,13 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 				advancePayment.setPaymentAmount(advancePayment.getPaymentAmount() + makePaymentList.getPaymentAmount());
 				advancePayment.setUnappliedAmount(advancePayment.getPaymentAmount());
 				advancePayment.setDueAmount(advancePayment.getDueAmount() - makePaymentList.getPaymentAmount());
+				if((advancePayment.getAdvanceAmount() > advancePayment.getPaymentAmount()) && (advancePayment.getPaymentAmount() > 0)) {
+					advancePayment.setStatus(TransactionStatus.PARTIALLY_PAID.getTransactionStatus());
+				}else
+//				if(makePaymentList.getAmountDue()==makePaymentList.getPaymentAmount()){
+					advancePayment.setStatus(TransactionStatus.PAID.getTransactionStatus());
+			//	}
+				this.advancePaymentRepository.save(advancePayment);
 			}
 			System.gc();
 			savedMakePayment = this.getMakePaymentById(savedMakePayment.getId());
