@@ -249,10 +249,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 			}
 			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
 			
-			List<GrnItem> grnItems = procureServiceClient.findByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
-			if (CollectionUtils.isEmpty(grnItems)) {
-				throw new CustomException("GRN & Its's Item mapping is not found. Please validate your configuration.");
-			}
+//			List<GrnItem> grnItems = procureServiceClient.findByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
+//			if (CollectionUtils.isEmpty(grnItems)) {
+//				throw new CustomException("GRN & Its's Item mapping is not found. Please validate your configuration.");
+//			}
 		} else {
 			// Get the existing object using the deep copy
 			oldInvoiceItem = invoiceItemRepository.findById(invoiceItemId);
