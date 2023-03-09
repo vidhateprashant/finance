@@ -16,7 +16,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import javax.persistence.criteria.CriteriaBuilder;
@@ -56,6 +58,7 @@ import com.monstarbill.finance.enums.TransactionStatus;
 import com.monstarbill.finance.feignclients.MasterServiceClient;
 import com.monstarbill.finance.feignclients.ProcureServiceClient;
 import com.monstarbill.finance.feignclients.SetupServiceClient;
+import com.monstarbill.finance.models.Grn;
 import com.monstarbill.finance.models.GrnItem;
 import com.monstarbill.finance.models.Invoice;
 import com.monstarbill.finance.models.InvoiceHistory;
@@ -63,7 +66,6 @@ import com.monstarbill.finance.models.InvoiceItem;
 import com.monstarbill.finance.models.InvoicePayment;
 import com.monstarbill.finance.models.Item;
 import com.monstarbill.finance.models.Location;
-import com.monstarbill.finance.models.PurchaseOrder;
 import com.monstarbill.finance.models.PurchaseOrderItem;
 import com.monstarbill.finance.models.Subsidiary;
 import com.monstarbill.finance.models.Supplier;
@@ -94,18 +96,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 	@Autowired
 	private ProcureServiceClient procureServiceClient;
 
-//	@Autowired
-//	GrnRepository grnRepository;
-//	
-//	@Autowired
-//	private SupplierAddressRepository supplierAddressRepository;
-//	
-//	@Autowired
-//	private TaxGroupRepository taxGroupRepository;
-//	
-//	@Autowired
-//	private ItemRepository itemRepository;
-
 	@Autowired
 	private InvoiceRepository invoiceRepository;
 
@@ -115,26 +105,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 	@Autowired
 	private InvoiceHistoryRepository invoiceHistoryRepository;
 
-//	@Autowired
-//	private DocumentSequenceService documentSequenceService;
-//	
-//	@Autowired
-//	private SubsidiaryRepository subsidiaryRepository;
-//	
-//	@Autowired
-//	private SupplierRepository supplierRepository;
-
 	@Autowired
 	private InvoicePaymentRepository invoicePaymentRepository;
-
-//	@Autowired
-//	private GrnItemRepository grnItemRepository;
-//	
-//	@Autowired
-//	private PurchaseOrderRepository purchaseOrderRepository;
-//	
-//	@Autowired
-//	private LocationRepository locationRepository;
 
 	@Override
 	@Transactional
@@ -166,16 +138,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				}
 			}
 		}
-
-		if (invoiceId != null) {
-			Optional<Invoice> invoiceExistValue = Optional.empty();
-			if (invoiceExistValue.isPresent()) {
-				invoiceExistValue = this.invoiceRepository.getByInvoiceId(invoiceId);
-				invoiceExistValue.get().getAmountDue();
-				invoice.setAmountDue(invoiceExistValue.get().getAmountDue());
-			}
-		}
-		invoice.setAmountDue(invoice.getTotalAmount());
+		
 		invoice.setLastModifiedBy(CommonUtils.getLoggedInUsername());
 		log.info("Save invoice started.");
 		try {
@@ -188,22 +151,48 @@ public class InvoiceServiceImpl implements InvoiceService {
 		updateInvoiceHistory(invoiceSaved, oldInvoice);
 		
 		log.info("Invoice Items are started.");
+		
+		Set<Long> grnIds = new TreeSet<Long>();
+		boolean isGrnBasedInvoice = false;
+		
 		List<InvoiceItem> invoiceItems = invoice.getInvoiceItems();
 		if (CollectionUtils.isNotEmpty(invoiceItems)) {
 			List<InvoiceItem> invoiceItemsSaved = new ArrayList<>();
-			invoiceItems.forEach(invoiceItem -> {
+			for(InvoiceItem invoiceItem: invoiceItems) {
 				invoiceItem.setInvoiceId(invoiceSaved.getInvoiceId());
 				InvoiceItem invoiceItemSaved = saveInvoiceItem(invoiceItem);
 				invoiceItemsSaved.add(invoiceItemSaved);
-//				if(invoice.getPoId()!=null) {
-//					PurchaseOrder purchaseOrder = new PurchaseOrder();
-//					purchaseOrder = this.procureServiceClient.findById(invoice.getPoId());
-//					List<PurchaseOrderItem> purchaseOrderItems=new ArrayList<>();
-//					purchaseOrderItems.addAll(purchaseOrder.getPurchaseOrderItems());
-//				}
-			});
+				
+				if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
+					isGrnBasedInvoice = true;
+					grnIds.add(invoiceItem.getGrnId());
+				}
+			};
 			invoiceSaved.setInvoiceItems(invoiceItemsSaved);
-
+			
+			/**
+			 * execute below code only if Invoice is PO+GRN Based
+			 */
+			if (isGrnBasedInvoice) {
+				log.info("Grn header level status update started.");
+				List<Grn> grns = new ArrayList<Grn>();
+				for (Long grnId : grnIds) {
+					Grn grn = this.procureServiceClient.findGrnByGrnId(grnId);
+					Boolean isProcessed = this.procureServiceClient.isGrnFullyProcessed(grnId);
+					String status = TransactionStatus.PARTIALLY_BILLED.getTransactionStatus();
+					if (isProcessed) {
+						// if (!TransactionStatus.PARTIALLY_RETURN.getTransactionStatus().equalsIgnoreCase(grn.getRtvStatus())) {
+							status = TransactionStatus.BILLED.getTransactionStatus();
+						// }
+					}
+					
+					grn.setStatus(status);
+					grn.setBillStatus(status);
+					grns.add(grn);
+				}
+				this.procureServiceClient.saveGrn(grns);
+				log.info("Grn header level status update Finished.");
+			}
 		}
 		log.info("Invoice Items are Finished.");
 		return invoiceSaved;
@@ -215,20 +204,18 @@ public class InvoiceServiceImpl implements InvoiceService {
 		GrnItem grnitem = new GrnItem();
 		grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
 		purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
-		Double remainedQuantity = 0.0;
-		Double remainedQuantityForGrn = 0.0;
+		Double unbilledQuantity = 0.0;
 		InvoiceItem invoiceItemSaved = null;
 		Optional<InvoiceItem> oldInvoiceItem = Optional.empty();
 		Long invoiceItemId = invoiceItem.getInvoiceItemId();
 		
-		Double remainingGrnQuantity = 0.0;
-		
+//		Double remainingGrnQuantity = 0.0;
 		if (invoiceItemId == null) {
-			if ((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() == null)) {
-//				PurchaseOrder purchaseOrder = new PurchaseOrder();
-//				purchaseOrder = this.procureServiceClient.findPoById(invoiceItem.getPoId());
-//				PurchaseOrderItem purchaseOrderItem=new PurchaseOrderItem();
-//				purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(),invoiceItem.getItemId());
+			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
+			/**
+			 * Scenario - Invoice - PO Without GRN
+			 */
+			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() == null) {
 				purchaseOrderItem.setUnbilledQuantity(purchaseOrderItem.getUnbilledQuantity() - invoiceItem.getBillQty());
 				if (purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
@@ -237,22 +224,20 @@ public class InvoiceServiceImpl implements InvoiceService {
 				}
 				this.procureServiceClient.savePoItem(purchaseOrderItem);
 			}
-			if ((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() != null)) {
+			/**
+			 * Scenario - Invoice - PO With GRN
+			 */
+			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
 				grnitem.setUnbilledQuantity(grnitem.getUnbilledQuantity() - invoiceItem.getBillQty());
-
 				if (grnitem.getUnbilledQuantity() == 0) {
 					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
+					grnitem.setBillStatus(TransactionStatus.BILLED.getTransactionStatus());
 				} else {
 					grnitem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
+					grnitem.setBillStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
 				this.procureServiceClient.saveGrnItemObject(grnitem);
 			}
-			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
-			
-//			List<GrnItem> grnItems = procureServiceClient.findByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
-//			if (CollectionUtils.isEmpty(grnItems)) {
-//				throw new CustomException("GRN & Its's Item mapping is not found. Please validate your configuration.");
-//			}
 		} else {
 			// Get the existing object using the deep copy
 			oldInvoiceItem = invoiceItemRepository.findById(invoiceItemId);
@@ -264,52 +249,50 @@ public class InvoiceServiceImpl implements InvoiceService {
 					throw new CustomException("Error while Cloning the object. Please contact administrator.");
 				}
 			}
-			if ((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() == null)) {
-				Double newQuantity = invoiceItem.getBillQty();
-				Double oldQuantity = oldInvoiceItem.get().getBillQty();
-				Double difference = newQuantity - oldQuantity;
-				remainedQuantity = purchaseOrderItem.getUnbilledQuantity() - difference;
-				if (remainedQuantity < 0) {
-					throw new CustomException("Recieved quantity should be less than or equals to remained quantity.");
+			
+			Double newQuantity = invoiceItem.getBillQty();
+			Double oldQuantity = oldInvoiceItem.get().getBillQty();
+			Double difference = newQuantity - oldQuantity;
+			/**
+			 * Scenario - Invoice - PO Without GRN
+			 */
+			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() == null) {
+				unbilledQuantity = purchaseOrderItem.getUnbilledQuantity() - difference;
+				if (unbilledQuantity < 0) {
+					throw new CustomException("Billed quantity should be less than or equals to Unbilled quantity.");
 				}
-				purchaseOrderItem.setUnbilledQuantity(remainedQuantity);
+				purchaseOrderItem.setUnbilledQuantity(unbilledQuantity);
 				if (purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
+					grnitem.setBillStatus(TransactionStatus.BILLED.getTransactionStatus());
 				} else {
 					purchaseOrderItem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
+					grnitem.setBillStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
-
 				this.procureServiceClient.savePoItem(purchaseOrderItem);
 			}
-			if ((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() != null)) {
-				Double newQuantity = invoiceItem.getBillQty();
-				Double oldQuantity = oldInvoiceItem.get().getBillQty();
-				Double difference = newQuantity - oldQuantity;
-				remainedQuantityForGrn = grnitem.getUnbilledQuantity() - difference;
-				grnitem.setUnbilledQuantity(remainedQuantityForGrn);
-				if (remainedQuantityForGrn < 0) {
-					throw new CustomException("Recieved quantity should be less than or equals to remained quantity.");
+			
+			/**
+			 * Scenario - Invoice - PO With GRN
+			 */
+			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
+				unbilledQuantity = grnitem.getUnbilledQuantity() - difference;
+				grnitem.setUnbilledQuantity(unbilledQuantity);
+				if (unbilledQuantity < 0) {
+					throw new CustomException("Billed quantity should be less than or equals to Unbilled quantity.");
 				}
 				if (grnitem.getUnbilledQuantity() == 0) {
 					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
+					grnitem.setBillStatus(TransactionStatus.BILLED.getTransactionStatus());
 				} else {
 					grnitem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
+					grnitem.setBillStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
 				this.procureServiceClient.saveGrnItemObject(grnitem);
+				log.info("Grn Item status is updated");
 			}
-//		if (invoiceItem.getGrnId() != null) {
-//			// List<GrnItem> grnItems = new List<>();
-//			List<GrnItem> grnItems = this.procureServiceClient.findByGrnIdAndItemId(invoiceItem.getGrnId(),
-//					invoiceItem.getItemId());
-//			for (GrnItem grnItem : grnItems) {
-//				if ((grnItem.getGrnId() == invoiceItem.getGrnId())
-//						&& (grnItem.getItemId() == invoiceItem.getItemId())) {
-//					grnItem.setInvoiceId(invoiceItem.getInvoiceId());
-//				}
-//			}
-//			this.procureServiceClient.saveGrnItem(grnItems);
-//		}
 		}
+		
 		invoiceItem.setLastModifiedBy(CommonUtils.getLoggedInUsername());
 		log.info("Save invoice Item started.");
 		try {

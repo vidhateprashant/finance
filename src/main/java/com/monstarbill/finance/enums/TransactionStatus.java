@@ -24,6 +24,8 @@ public enum TransactionStatus {
 	PARTIALLY_RETURN("Partially Returned"),
 	FULLY_RETURNED("Fully Returned"),
 	VOID("Voided"),
+	PARTIALLY_RECEIVED("Partially Recevied"),
+	RECEIVED("Received"),
 	BILLED("Billed"),
 	PARTIALLY_PAID("Partially Paid"),
 	PAID("Paid"),

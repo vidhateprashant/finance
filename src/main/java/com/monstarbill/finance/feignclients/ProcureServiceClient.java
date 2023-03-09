@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import com.monstarbill.finance.models.Grn;
 import com.monstarbill.finance.models.GrnItem;
 import com.monstarbill.finance.models.PurchaseOrder;
 import com.monstarbill.finance.models.PurchaseOrderItem;
@@ -159,4 +160,51 @@ public interface ProcureServiceClient {
 		return null;
 	}
 	
+	/**
+	 * find whether GRN is fully processed or not. More description is given on controlller level
+	 * @param grnId
+	 * @return
+	 */
+	@GetMapping("/grn/is-grn-fully-processed")
+	@Retry(name = "procure-ws")
+	@CircuitBreaker(name = "procure-ws", fallbackMethod = "isGrnFullyProcessedFallback")
+	public Boolean isGrnFullyProcessed(@RequestParam("grnId") Long grnId);
+
+	default Boolean isGrnFullyProcessedFallback(Long grnId, Throwable exception) {
+		logger.error("Erroe while getting isGrnFullyProcessed for grn-id : " + grnId + ", isGrnFullyProcessedFallback.");
+		logger.error("Exception : " + exception.getLocalizedMessage());
+		return null;
+	}
+
+	/**
+	 * find GRN BY Grn id
+	 * @param grnId
+	 * @return
+	 */
+	@GetMapping("/grn/get")
+	@Retry(name = "procure-ws")
+	@CircuitBreaker(name = "procure-ws", fallbackMethod = "findGrnByGrnIdFallback")
+	public Grn findGrnByGrnId(@RequestParam("id") Long grnId);
+
+	default Grn findGrnByGrnIdFallback(Long grnId, Long itemId, Throwable exception) {
+		logger.error("grn id  : " + grnId + " is not found exception.");
+		logger.error("findGrnByGrnIdFallback Exception : " + exception.getLocalizedMessage());
+		return null;
+	}
+
+	/**
+	 * save the GRN
+	 * @param grns
+	 * @return
+	 */
+	@PostMapping("/grn/save")
+	@Retry(name = "procure-ws")
+	@CircuitBreaker(name = "procure-ws", fallbackMethod = "saveGrnFallback")
+	public List<Grn> saveGrn(@RequestBody List<Grn> grns);
+
+	default List<Grn> saveGrnFallback(List<Grn> grns, Throwable exception) {
+		logger.error("grn save Not found exception.");
+		logger.error("saveGrnFallback Exception : " + exception.getLocalizedMessage());
+		return null;
+	}
 }
