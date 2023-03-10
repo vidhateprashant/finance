@@ -85,6 +85,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
+@Transactional
 public class InvoiceServiceImpl implements InvoiceService {
 
 	@Autowired
@@ -109,7 +110,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private InvoicePaymentRepository invoicePaymentRepository;
 
 	@Override
-	@Transactional
 	public Invoice saveInvoice(Invoice invoice) {
 		Invoice invoiceSaved;
 		Optional<Invoice> oldInvoice = Optional.empty();
@@ -198,24 +198,20 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoiceSaved;
 	}
 
-	@Transactional
 	private InvoiceItem saveInvoiceItem(InvoiceItem invoiceItem) {
-		PurchaseOrderItem purchaseOrderItem = new PurchaseOrderItem();
-		GrnItem grnitem = new GrnItem();
-		grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
-		purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
 		Double unbilledQuantity = 0.0;
 		InvoiceItem invoiceItemSaved = null;
 		Optional<InvoiceItem> oldInvoiceItem = Optional.empty();
 		Long invoiceItemId = invoiceItem.getInvoiceItemId();
 		
-//		Double remainingGrnQuantity = 0.0;
+		//		Double remainingGrnQuantity = 0.0;
 		if (invoiceItemId == null) {
 			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
 			/**
 			 * Scenario - Invoice - PO Without GRN
 			 */
 			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() == null) {
+				PurchaseOrderItem purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
 				purchaseOrderItem.setUnbilledQuantity(purchaseOrderItem.getUnbilledQuantity() - invoiceItem.getBillQty());
 				if (purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
@@ -228,6 +224,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			 * Scenario - Invoice - PO With GRN
 			 */
 			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
+				GrnItem grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
 				grnitem.setUnbilledQuantity(grnitem.getUnbilledQuantity() - invoiceItem.getBillQty());
 				if (grnitem.getUnbilledQuantity() == 0) {
 					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
@@ -257,6 +254,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			 * Scenario - Invoice - PO Without GRN
 			 */
 			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() == null) {
+				PurchaseOrderItem purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
 				unbilledQuantity = purchaseOrderItem.getUnbilledQuantity() - difference;
 				if (unbilledQuantity < 0) {
 					throw new CustomException("Billed quantity should be less than or equals to Unbilled quantity.");
@@ -264,10 +262,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 				purchaseOrderItem.setUnbilledQuantity(unbilledQuantity);
 				if (purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
-					grnitem.setBillStatus(TransactionStatus.BILLED.getTransactionStatus());
 				} else {
 					purchaseOrderItem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
-					grnitem.setBillStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
 				this.procureServiceClient.savePoItem(purchaseOrderItem);
 			}
@@ -276,6 +272,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 			 * Scenario - Invoice - PO With GRN
 			 */
 			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
+				GrnItem grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
+				if (grnitem == null) {
+					throw new CustomException("GRN Item - " + invoiceItem.getItemId() + " is Billed. Please select another Item. ");
+				}
 				unbilledQuantity = grnitem.getUnbilledQuantity() - difference;
 				grnitem.setUnbilledQuantity(unbilledQuantity);
 				if (unbilledQuantity < 0) {
@@ -315,7 +315,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 	 * @param invoice
 	 * @param oldInvoice
 	 */
-	@Transactional
 	private void updateInvoiceHistory(Invoice invoice, Optional<Invoice> oldInvoice) {
 		log.info("Invoice History is started.");
 		if (oldInvoice.isPresent()) {
@@ -341,7 +340,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 		log.info("Invoice History is Completed.");
 	}
 
-	@Transactional
 	private void updateInvoiceItemHistory(InvoiceItem invoiceItem, Optional<InvoiceItem> oldInvoiceItem) {
 		log.info("Invoice Item History is started.");
 		if (oldInvoiceItem.isPresent()) {

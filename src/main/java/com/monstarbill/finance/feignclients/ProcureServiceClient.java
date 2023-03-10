@@ -186,7 +186,7 @@ public interface ProcureServiceClient {
 	@CircuitBreaker(name = "procure-ws", fallbackMethod = "findGrnByGrnIdFallback")
 	public Grn findGrnByGrnId(@RequestParam("id") Long grnId);
 
-	default Grn findGrnByGrnIdFallback(Long grnId, Long itemId, Throwable exception) {
+	default Grn findGrnByGrnIdFallback(Long grnId, Throwable exception) {
 		logger.error("grn id  : " + grnId + " is not found exception.");
 		logger.error("findGrnByGrnIdFallback Exception : " + exception.getLocalizedMessage());
 		return null;
