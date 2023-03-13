@@ -75,6 +75,7 @@ import com.monstarbill.finance.payload.request.ApprovalRequest;
 import com.monstarbill.finance.payload.request.PaginationRequest;
 import com.monstarbill.finance.payload.response.ApprovalPreference;
 import com.monstarbill.finance.payload.response.PaginationResponse;
+import com.monstarbill.finance.repository.GrnRepository;
 import com.monstarbill.finance.repository.InvoiceHistoryRepository;
 import com.monstarbill.finance.repository.InvoiceItemRepository;
 import com.monstarbill.finance.repository.InvoicePaymentRepository;
@@ -85,48 +86,79 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-@Transactional
 public class InvoiceServiceImpl implements InvoiceService {
-
+	
 	@Autowired
 	private SetupServiceClient setupServiceClient;
-
+	
 	@Autowired
 	private MasterServiceClient masterServiceClient;
-
+	
 	@Autowired
 	private ProcureServiceClient procureServiceClient;
-
+	
 	@Autowired
-	private InvoiceRepository invoiceRepository;
-
+	private GrnRepository grnRepository;
+//	
+//	@Autowired
+//	private SupplierAddressRepository supplierAddressRepository;
+//	
+//	@Autowired
+//	private TaxGroupRepository taxGroupRepository;
+//	
+//	@Autowired
+//	private ItemRepository itemRepository;
+	
 	@Autowired
-	private InvoiceItemRepository invoiceItemRepository;
-
+    private InvoiceRepository invoiceRepository;
+	
 	@Autowired
-	private InvoiceHistoryRepository invoiceHistoryRepository;
+    private InvoiceItemRepository invoiceItemRepository;
+	
+	@Autowired
+    private InvoiceHistoryRepository invoiceHistoryRepository;
+	
+//	@Autowired
+//	private DocumentSequenceService documentSequenceService;
+//	
+//	@Autowired
+//	private SubsidiaryRepository subsidiaryRepository;
+//	
+//	@Autowired
+//	private SupplierRepository supplierRepository;
 
 	@Autowired
 	private InvoicePaymentRepository invoicePaymentRepository;
+	
+//	@Autowired
+//	private GrnItemRepository grnItemRepository;
+//	
+//	@Autowired
+//	private PurchaseOrderRepository purchaseOrderRepository;
+//	
+//	@Autowired
+//	private LocationRepository locationRepository;
 
 	@Override
+	@Transactional
 	public Invoice saveInvoice(Invoice invoice) {
+	
 		Invoice invoiceSaved;
 		Optional<Invoice> oldInvoice = Optional.empty();
 		Long invoiceId = invoice.getInvoiceId();
-		if (invoiceId == null) {
+		if(invoiceId==null)	{
 			invoice.setInvStatus(TransactionStatus.OPEN.getTransactionStatus());
 			invoice.setTotalPaidAmount(0.0);
 			invoice.setAmountDue(invoice.getTotalAmount());
 			invoice.setCreatedBy(CommonUtils.getLoggedInUsername());
 			String transactionalDate = CommonUtils.convertDateToFormattedString(invoice.getInvoiceDate());
-			String documentSequenceNumber = this.setupServiceClient.getDocumentSequenceNumber(transactionalDate,
-					invoice.getSubsidiaryId(), AppConstants.INVOICE, false);
+			String documentSequenceNumber = this.setupServiceClient.getDocumentSequenceNumber(transactionalDate, invoice.getSubsidiaryId(), AppConstants.INVOICE, false);
 			if (StringUtils.isEmpty(documentSequenceNumber)) {
 				throw new CustomMessageException("Please validate your configuration to generate the Invoice Number");
 			}
 			invoice.setInvoiceCode(documentSequenceNumber);
-		} else {
+		}
+		else	{
 			oldInvoice = invoiceRepository.findById(invoiceId);
 			// Get the existing object using the deep copy
 			if (oldInvoice.isPresent()) {
@@ -138,27 +170,27 @@ public class InvoiceServiceImpl implements InvoiceService {
 				}
 			}
 		}
-		
+
+		// invoice.setAmountDue(invoice.getTotalAmount());
 		invoice.setLastModifiedBy(CommonUtils.getLoggedInUsername());
 		log.info("Save invoice started.");
 		try {
 			invoiceSaved = invoiceRepository.save(invoice);
-		} catch (DataAccessException e) {
-			log.error("Error while saving the Invoice :: " + e.getMostSpecificCause());
+		}catch (DataAccessException e) {
+			log.error("Error while saving the Invoice :: "+ e.getMostSpecificCause());
 			throw new CustomException("Error while saving the Invoice: " + e.getMostSpecificCause());
 		}
 		log.info("Saved invoice: " + invoiceSaved);
 		updateInvoiceHistory(invoiceSaved, oldInvoice);
-		
 		log.info("Invoice Items are started.");
 		
 		Set<Long> grnIds = new TreeSet<Long>();
 		boolean isGrnBasedInvoice = false;
 		
-		List<InvoiceItem> invoiceItems = invoice.getInvoiceItems();
-		if (CollectionUtils.isNotEmpty(invoiceItems)) {
+		List<InvoiceItem> invoiceItems=invoice.getInvoiceItems();
+		if (CollectionUtils.isNotEmpty(invoiceItems))	{
 			List<InvoiceItem> invoiceItemsSaved = new ArrayList<>();
-			for(InvoiceItem invoiceItem: invoiceItems) {
+			for (InvoiceItem invoiceItem : invoiceItems) {
 				invoiceItem.setInvoiceId(invoiceSaved.getInvoiceId());
 				InvoiceItem invoiceItemSaved = saveInvoiceItem(invoiceItem);
 				invoiceItemsSaved.add(invoiceItemSaved);
@@ -167,7 +199,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					isGrnBasedInvoice = true;
 					grnIds.add(invoiceItem.getGrnId());
 				}
-			};
+			}
 			invoiceSaved.setInvoiceItems(invoiceItemsSaved);
 			
 			/**
@@ -181,60 +213,63 @@ public class InvoiceServiceImpl implements InvoiceService {
 					Boolean isProcessed = this.procureServiceClient.isGrnFullyProcessed(grnId);
 					String status = TransactionStatus.PARTIALLY_BILLED.getTransactionStatus();
 					if (isProcessed) {
-						// if (!TransactionStatus.PARTIALLY_RETURN.getTransactionStatus().equalsIgnoreCase(grn.getRtvStatus())) {
+						 if (StringUtils.isEmpty(grn.getRtvStatus())) {
 							status = TransactionStatus.BILLED.getTransactionStatus();
-						// }
+						 }
 					}
-					
 					grn.setStatus(status);
 					grn.setBillStatus(status);
 					grns.add(grn);
 				}
-				this.procureServiceClient.saveGrn(grns);
+				this.grnRepository.saveAll(grns);
 				log.info("Grn header level status update Finished.");
 			}
 		}
 		log.info("Invoice Items are Finished.");
 		return invoiceSaved;
 	}
-
+	
+	@Transactional
 	private InvoiceItem saveInvoiceItem(InvoiceItem invoiceItem) {
-		Double unbilledQuantity = 0.0;
+		PurchaseOrderItem purchaseOrderItem = new PurchaseOrderItem();
+		GrnItem grnitem = new GrnItem();
+		Double remainedQuantityForGrn = 0.0;
 		InvoiceItem invoiceItemSaved = null;
 		Optional<InvoiceItem> oldInvoiceItem = Optional.empty();
 		Long invoiceItemId = invoiceItem.getInvoiceItemId();
-		
-		//		Double remainingGrnQuantity = 0.0;
 		if (invoiceItemId == null) {
-			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
+			
 			/**
 			 * Scenario - Invoice - PO Without GRN
 			 */
-			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() == null) {
-				PurchaseOrderItem purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
+			if ((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() == null)) {
+				purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
 				purchaseOrderItem.setUnbilledQuantity(purchaseOrderItem.getUnbilledQuantity() - invoiceItem.getBillQty());
-				if (purchaseOrderItem.getUnbilledQuantity() == 0) {
+				if(purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
 				} else {
 					purchaseOrderItem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
 				this.procureServiceClient.savePoItem(purchaseOrderItem);
 			}
+			
 			/**
 			 * Scenario - Invoice - PO With GRN
 			 */
-			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
-				GrnItem grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
+			if((invoiceItem.getPoId() != null) && (invoiceItem.getGrnId() != null)) {
+				grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
 				grnitem.setUnbilledQuantity(grnitem.getUnbilledQuantity() - invoiceItem.getBillQty());
-				if (grnitem.getUnbilledQuantity() == 0) {
+				
+				if(grnitem.getUnbilledQuantity() == 0) {
 					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
 					grnitem.setBillStatus(TransactionStatus.BILLED.getTransactionStatus());
-				} else {
+				}else {
 					grnitem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 					grnitem.setBillStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
 				this.procureServiceClient.saveGrnItemObject(grnitem);
-			}
+			}			
+			invoiceItem.setCreatedBy(CommonUtils.getLoggedInUsername());
 		} else {
 			// Get the existing object using the deep copy
 			oldInvoiceItem = invoiceItemRepository.findById(invoiceItemId);
@@ -250,21 +285,24 @@ public class InvoiceServiceImpl implements InvoiceService {
 			Double newQuantity = invoiceItem.getBillQty();
 			Double oldQuantity = oldInvoiceItem.get().getBillQty();
 			Double difference = newQuantity - oldQuantity;
+			remainedQuantityForGrn = purchaseOrderItem.getUnbilledQuantity() - difference;
+			
 			/**
 			 * Scenario - Invoice - PO Without GRN
 			 */
 			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() == null) {
-				PurchaseOrderItem purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
-				unbilledQuantity = purchaseOrderItem.getUnbilledQuantity() - difference;
-				if (unbilledQuantity < 0) {
-					throw new CustomException("Billed quantity should be less than or equals to Unbilled quantity.");
+				purchaseOrderItem = this.procureServiceClient.getByPoItemId(invoiceItem.getPoId(), invoiceItem.getItemId());
+				
+				if (remainedQuantityForGrn < 0) {
+					throw new CustomException("Recieved quantity should be less than or equals to remained quantity.");
 				}
-				purchaseOrderItem.setUnbilledQuantity(unbilledQuantity);
-				if (purchaseOrderItem.getUnbilledQuantity() == 0) {
+				purchaseOrderItem.setUnbilledQuantity(remainedQuantityForGrn);
+				if(purchaseOrderItem.getUnbilledQuantity() == 0) {
 					purchaseOrderItem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
-				} else {
+				}else {
 					purchaseOrderItem.setStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
+				
 				this.procureServiceClient.savePoItem(purchaseOrderItem);
 			}
 			
@@ -272,14 +310,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 			 * Scenario - Invoice - PO With GRN
 			 */
 			if (invoiceItem.getPoId() != null && invoiceItem.getGrnId() != null) {
-				GrnItem grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
-				if (grnitem == null) {
-					throw new CustomException("GRN Item - " + invoiceItem.getItemId() + " is Billed. Please select another Item. ");
-				}
-				unbilledQuantity = grnitem.getUnbilledQuantity() - difference;
-				grnitem.setUnbilledQuantity(unbilledQuantity);
-				if (unbilledQuantity < 0) {
-					throw new CustomException("Billed quantity should be less than or equals to Unbilled quantity.");
+				grnitem = this.procureServiceClient.findGrnItemByGrnIdAndItemId(invoiceItem.getGrnId(), invoiceItem.getItemId());
+				grnitem.setUnbilledQuantity(remainedQuantityForGrn);
+				if (remainedQuantityForGrn < 0) {
+					throw new CustomException("Recieved quantity should be less than or equals to remained quantity.");
 				}
 				if (grnitem.getUnbilledQuantity() == 0) {
 					grnitem.setStatus(TransactionStatus.BILLED.getTransactionStatus());
@@ -289,32 +323,31 @@ public class InvoiceServiceImpl implements InvoiceService {
 					grnitem.setBillStatus(TransactionStatus.PARTIALLY_BILLED.getTransactionStatus());
 				}
 				this.procureServiceClient.saveGrnItemObject(grnitem);
-				log.info("Grn Item status is updated");
 			}
 		}
-		
 		invoiceItem.setLastModifiedBy(CommonUtils.getLoggedInUsername());
 		log.info("Save invoice Item started.");
 		try {
 			invoiceItemSaved = invoiceItemRepository.save(invoiceItem);
 		} catch (DataAccessException e) {
-			log.error("Error while saving the Invoice Item :: " + e.getMostSpecificCause());
+			log.error("Error while saving the Invoice Item :: "+ e.getMostSpecificCause());
 			throw new CustomException("Error while saving the Invoice Item: " + e.getMostSpecificCause());
 		}
 		log.info("Saved invoice Item: " + invoiceItemSaved);
 		updateInvoiceItemHistory(invoiceItemSaved, oldInvoiceItem);
-
+		
 		return invoiceItemSaved;
-
+		
 	}
-
+	
 	/**
-	 * This method save the data in history table Add entry as a Insert if Invoice
-	 * is new Add entry as a Update if Invoice is exists
-	 * 
+	 * This method save the data in history table
+	 * Add entry as a Insert if Invoice is new 
+	 * Add entry as a Update if Invoice is exists
 	 * @param invoice
 	 * @param oldInvoice
 	 */
+	@Transactional
 	private void updateInvoiceHistory(Invoice invoice, Optional<Invoice> oldInvoice) {
 		log.info("Invoice History is started.");
 		if (oldInvoice.isPresent()) {
@@ -327,19 +360,17 @@ public class InvoiceServiceImpl implements InvoiceService {
 				}
 			} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
 				log.error("Error while comparing the new and old objects. Please contact administrator.");
-				throw new CustomException(
-						"Error while comparing the new and old objects. Please contact administrator.");
+				throw new CustomException("Error while comparing the new and old objects. Please contact administrator.");
 			}
 			log.info("Invoice History is updated successfully");
 		} else {
-			// Insert in history table as Operation - INSERT
-			this.invoiceHistoryRepository
-					.save(this.prepareInvoiceHistory(invoice.getInvoiceId(), null, AppConstants.INVOICE,
-							Operation.CREATE.toString(), invoice.getLastModifiedBy(), null, invoice.getInvoiceNo()));
+			// Insert in history table as Operation - INSERT 
+			this.invoiceHistoryRepository.save(this.prepareInvoiceHistory(invoice.getInvoiceId(), null, AppConstants.INVOICE, 
+					Operation.CREATE.toString(), invoice.getLastModifiedBy(), null, invoice.getInvoiceNo()));
 		}
 		log.info("Invoice History is Completed.");
 	}
-
+	@Transactional
 	private void updateInvoiceItemHistory(InvoiceItem invoiceItem, Optional<InvoiceItem> oldInvoiceItem) {
 		log.info("Invoice Item History is started.");
 		if (oldInvoiceItem.isPresent()) {
@@ -352,22 +383,19 @@ public class InvoiceServiceImpl implements InvoiceService {
 				}
 			} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
 				log.error("Error while comparing the new and old objects. Please contact administrator.");
-				throw new CustomException(
-						"Error while comparing the new and old objects. Please contact administrator.");
+				throw new CustomException("Error while comparing the new and old objects. Please contact administrator.");
 			}
 			log.info("Invoice Item History is updated successfully");
 		} else {
-			// Insert in history table as Operation - INSERT
-			this.invoiceHistoryRepository.save(this.prepareInvoiceHistory(invoiceItem.getInvoiceId(),
-					invoiceItem.getInvoiceItemId(), AppConstants.INVOICE_ITEM, Operation.CREATE.toString(),
-					invoiceItem.getLastModifiedBy(), null, String.valueOf(invoiceItem.getInvoiceItemId())));
+			// Insert in history table as Operation - INSERT 
+			this.invoiceHistoryRepository.save(this.prepareInvoiceHistory(invoiceItem.getInvoiceId(), invoiceItem.getInvoiceItemId(),
+					AppConstants.INVOICE_ITEM, Operation.CREATE.toString(), invoiceItem.getLastModifiedBy(), null, String.valueOf(invoiceItem.getInvoiceItemId())));
 		}
 		log.info("Invoice Item History is Completed.");
 	}
-
+	
 	/**
 	 * Prepares the Invoice history object
-	 * 
 	 * @param invoiceId
 	 * @param childId
 	 * @param moduleName
@@ -377,8 +405,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 	 * @param newValue
 	 * @return
 	 */
-	public InvoiceHistory prepareInvoiceHistory(Long invoiceId, Long childId, String moduleName, String operation,
-			String lastModifiedBy, String oldValue, String newValue) {
+	public InvoiceHistory prepareInvoiceHistory(Long invoiceId, Long childId, String moduleName, String operation, String lastModifiedBy, String oldValue, String newValue) {
 		InvoiceHistory invoiceHistory = new InvoiceHistory();
 		invoiceHistory.setInvoiceId(invoiceId);
 		invoiceHistory.setChildId(childId);
@@ -401,14 +428,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 				Long subsidiaryId = null, supplierId = null;
 				String fromDate = null;
 				String toDate = null;
-				Map<String, ?> filters = paginationRequest.getFilters();
+				Map<String, ?> filters = paginationRequest.getFilters();			
 				if (filters.containsKey(FilterNames.SUBSIDIARY_ID))
 					subsidiaryId = ((Number) filters.get(FilterNames.SUBSIDIARY_ID)).longValue();
 				if (filters.containsKey(FilterNames.SUPPLIER_ID))
 					supplierId = ((Number) filters.get(FilterNames.SUPPLIER_ID)).longValue();
-				if (filters.containsKey(FilterNames.FROM_DATE))
+				if (filters.containsKey(FilterNames.FROM_DATE)) 
 					fromDate = (String) filters.get(FilterNames.FROM_DATE);
-				if (filters.containsKey(FilterNames.TO_DATE))
+				if (filters.containsKey(FilterNames.TO_DATE)) 
 					toDate = (String) filters.get(FilterNames.TO_DATE);
 				List<Predicate> predicates = new ArrayList<Predicate>();
 				if (subsidiaryId != null && subsidiaryId != 0)
@@ -417,13 +444,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 					predicates.add(criteriaBuilder.equal(root.get("supplierId"), supplierId));
 				SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 				try {
-					if (fromDate != null && !fromDate.isEmpty()) {
-						predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.<Date>get("invoiceDate"),
-								sdf.parse(fromDate)));
+					if (fromDate!= null && !fromDate.isEmpty()) {
+						predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.<Date>get("invoiceDate"), sdf.parse(fromDate)));
 					}
-					if (toDate != null && !toDate.isEmpty()) {
-						predicates.add(
-								criteriaBuilder.lessThanOrEqualTo(root.<Date>get("invoiceDate"), sdf.parse(toDate)));
+					if (toDate!= null && !toDate.isEmpty()) {
+						predicates.add(criteriaBuilder.lessThanOrEqualTo(root.<Date>get("invoiceDate"), sdf.parse(toDate)));
 					}
 				} catch (ParseException e) {
 					e.printStackTrace();
@@ -432,46 +457,46 @@ public class InvoiceServiceImpl implements InvoiceService {
 			}
 		};
 		Pageable pageable = null;
-		if (paginationRequest.getSortColumn().equals("supplierName")
-				|| paginationRequest.getSortColumn().equals("subsidiaryName")) {
+		if(paginationRequest.getSortColumn().equals("supplierName") || paginationRequest.getSortColumn().equals("subsidiaryName"))	{
 			pageable = PageRequest.of(paginationRequest.getPageNumber(), paginationRequest.getPageSize());
-		} else {
-			Sort sort = paginationRequest.getSortOrder().equalsIgnoreCase("asc")
-					? Sort.by(paginationRequest.getSortColumn()).ascending()
-					: Sort.by(paginationRequest.getSortColumn()).descending();
+		}
+		else	{
+			Sort sort = paginationRequest.getSortOrder().equalsIgnoreCase("asc")?
+	                Sort.by(paginationRequest.getSortColumn()).ascending(): Sort.by(paginationRequest.getSortColumn()).descending();
 			pageable = PageRequest.of(paginationRequest.getPageNumber(), paginationRequest.getPageSize(), sort);
 		}
 		Page<Invoice> pgInvoices = invoiceRepository.findAll(specification, pageable);
-		if (pgInvoices.hasContent())
+		if(pgInvoices.hasContent())
 			invoices = pgInvoices.getContent();
-		if (CollectionUtils.isNotEmpty(invoices))
+		if(CollectionUtils.isNotEmpty(invoices))
 			invoices.forEach(invoice -> {
 				Subsidiary optSubsidiary = setupServiceClient.getSubsidiaryById(invoice.getSubsidiaryId());
-				if (optSubsidiary != null)
+				if(optSubsidiary!=null)
 					invoice.setSubsidiaryName(optSubsidiary.getName());
 				Supplier supOptional = masterServiceClient.findSupplierById(invoice.getSupplierId());
-				if (supOptional != null)
+				if(supOptional!=null)
 					invoice.setSupplierName(supOptional.getName());
 			});
-		if (paginationRequest.getSortColumn().equals("supplierName")) {
+		if(paginationRequest.getSortColumn().equals("supplierName"))	{
 			invoices = new ArrayList<Invoice>(invoices);
 			Collections.sort(invoices, new Comparator<Invoice>() {
 
 				@Override
 				public int compare(Invoice o1, Invoice o2) {
-					if (paginationRequest.getSortOrder().equalsIgnoreCase("asc"))
+					if(paginationRequest.getSortOrder().equalsIgnoreCase("asc"))
 						return o1.getSupplierName().compareTo(o2.getSupplierName());
 					else
 						return o2.getSupplierName().compareTo(o1.getSupplierName());
 				}
 			});
-		} else if (paginationRequest.getSortColumn().equals("subsidiaryName")) {
+		}
+		else if(paginationRequest.getSortColumn().equals("subsidiaryName"))	{
 			invoices = new ArrayList<Invoice>(invoices);
 			Collections.sort(invoices, new Comparator<Invoice>() {
 
 				@Override
 				public int compare(Invoice o1, Invoice o2) {
-					if (paginationRequest.getSortOrder().equalsIgnoreCase("asc"))
+					if(paginationRequest.getSortOrder().equalsIgnoreCase("asc"))
 						return o1.getSubsidiaryName().compareTo(o2.getSubsidiaryName());
 					else
 						return o2.getSubsidiaryName().compareTo(o1.getSubsidiaryName());
@@ -487,18 +512,19 @@ public class InvoiceServiceImpl implements InvoiceService {
 	@Override
 	public List<Invoice> findBySubsidiaryAndSuppplier(Long subsidiaryId, Long supplierId) {
 		List<Invoice> invoices = new ArrayList<Invoice>();
-		invoices = this.invoiceRepository.getAllInvoiceBySubsidiaryIdAndSupplierId(subsidiaryId, supplierId);
+		invoices = this.invoiceRepository
+				.getAllInvoiceBySubsidiaryIdAndSupplierId( subsidiaryId, supplierId);
 		log.info("Get all invoice by subsidiaryId and supplierId ." + invoices);
 		return invoices;
 	}
 
 	@Override
 	public Invoice getInvoice(Long invoiceId) {
-
+		
 		Invoice invoice = null;
 		log.info("Get invoice by id started.");
 		Optional<Invoice> optInvoice = invoiceRepository.findById(invoiceId);
-		if (optInvoice.isPresent()) {
+		if(optInvoice.isPresent())	{
 			invoice = optInvoice.get();
 			List<InvoiceItem> invoiceItems = invoiceItemRepository.findByInvoiceId(invoice.getInvoiceId());
 			List<InvoicePayment> invoicePayment = invoicePaymentRepository.findByInvoiceId(invoice.getInvoiceId());
@@ -506,16 +532,16 @@ public class InvoiceServiceImpl implements InvoiceService {
 			invoice.setInvoicePayments(invoicePayment);
 		}
 		log.info("Get invoice: " + invoice);
-
+		
 		return invoice;
 	}
 
 	@Override
 	public List<InvoiceHistory> getInvoiceHistory(Long invoiceId, Pageable pageable) {
 		List<InvoiceHistory> invoiceHistories = null;
-		log.info("Get History by Invoice id started.");
+		log.info("Get History by Invoice id started.");		
 		Page<InvoiceHistory> pgInvoiceHistories = invoiceHistoryRepository.findByInvoiceId(invoiceId, pageable);
-		if (pgInvoiceHistories.hasContent())
+		if(pgInvoiceHistories.hasContent())
 			invoiceHistories = pgInvoiceHistories.getContent();
 		log.info("Get Invoice History: " + invoiceHistories);
 		return invoiceHistories;
@@ -530,25 +556,24 @@ public class InvoiceServiceImpl implements InvoiceService {
 			}
 			invoicePayment.setModifiedBy(CommonUtils.getLoggedInUsername());
 			invoice = this.invoiceRepository.findByInvoiceId(invoicePayment.getInvoiceId());
-			if (!invoice.isPresent()) {
+			if(!invoice.isPresent()) {
 				log.error(" Invoice is not created for id : " + invoicePayment.getInvoiceId());
 				throw new CustomException(" Invoice is not created for id : " + invoicePayment.getInvoiceId());
 			}
-			if (invoice.get().getAmountDue() == 0.0) {
+			if(invoice.get().getAmountDue()==0.0) {
 				log.error(" There is no due for the invoice id : " + invoicePayment.getInvoiceId());
 				throw new CustomException(" There is no due for the invoice id : " + invoicePayment.getInvoiceId());
 			}
 			Double remainDueAmount = 0.0;
-			remainDueAmount = this.invoicePaymentRepository
-					.findTotalAmountByInvoiceIdAndIsDeleted(invoicePayment.getInvoiceId(), false);
-			if (remainDueAmount == null) {
+			remainDueAmount = this.invoicePaymentRepository.findTotalAmountByInvoiceIdAndIsDeleted(invoicePayment.getInvoiceId(),false);	
+			if(remainDueAmount == null) {
 				remainDueAmount = 0.0;
 			}
-			remainDueAmount = invoicePayment.getAmount() + remainDueAmount;
+			remainDueAmount= invoicePayment.getAmount() + remainDueAmount;
 			log.info("total amount due " + remainDueAmount);
 			invoice.get().setTotalPaidAmount(remainDueAmount);
 			invoice.get().setAmountDue(invoice.get().getTotalAmount() - invoice.get().getTotalPaidAmount());
-			// log.info("Saved invoice payment : " + savedInvoicePayment);
+			//log.info("Saved invoice payment : " + savedInvoicePayment);
 			this.invoiceRepository.save(invoice.get());
 			InvoicePayment savedInvoicePayment = this.invoicePaymentRepository.save(invoicePayment);
 			log.info("Saved invoice payment : " + savedInvoicePayment);
@@ -562,8 +587,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		try {
 			/**
-			 * Due to single transaction we are getting updated value when we find from repo
-			 * after the update hence finding old one first
+			 * Due to single transaction we are getting updated value when we find from repo after the update
+			 * hence finding old one first
 			 */
 			// Get the existing object using the deep copy
 			Optional<Invoice> oldInvoice = this.findOldDeepCopiedInvoice(id);
@@ -577,19 +602,18 @@ public class InvoiceServiceImpl implements InvoiceService {
 			boolean isRoutingActive = invoice.get().isApprovalRoutingActive();
 			if (!isRoutingActive) {
 				log.error("Routing is not active for the Invoice : " + id + ". Please update your configuration. ");
-				throw new CustomMessageException(
-						"Routing is not active for the Invoice : " + id + ". Please update your configuration. ");
+				throw new CustomMessageException("Routing is not active for the Invoice : " + id + ". Please update your configuration. ");
 			}
-
+			
 			Double transactionalAmount = invoice.get().getTotalAmount();
 			log.info("Total estimated transaction amount for Invoice is :: " + transactionalAmount);
-
+			
 			// if amount is null then throw error
 			if (transactionalAmount == null || transactionalAmount == 0.0) {
 				log.error("There is no available Approval Process for this transaction.");
 				throw new CustomMessageException("There is no available Approval Process for this transaction.");
 			}
-
+			
 			ApprovalRequest approvalRequest = new ApprovalRequest();
 			approvalRequest.setSubsidiaryId(invoice.get().getSubsidiaryId());
 			approvalRequest.setFormName(FormNames.INVOICE.getFormName());
@@ -599,65 +623,61 @@ public class InvoiceServiceImpl implements InvoiceService {
 			log.info("Approval object us prepared : " + approvalRequest.toString());
 
 			/**
-			 * method will give max level & it's sequence if match otherwise throw error
-			 * message as no approver process exist if level or sequence id is null then
-			 * also throws error message.
+			 * method will give max level & it's sequence if match otherwise throw error message as no approver process exist
+			 * if level or sequence id is null then also throws error message.
 			 */
 			ApprovalPreference approvalPreference = this.masterServiceClient.findApproverMaxLevel(approvalRequest);
 			Long sequenceId = approvalPreference.getSequenceId();
 			String level = approvalPreference.getLevel();
 			Long approverPreferenceId = approvalPreference.getId();
 			log.info("Max level & sequence is found :: " + approvalPreference.toString());
-
+			
 			invoice.get().setApproverSequenceId(sequenceId);
 			invoice.get().setApproverMaxLevel(level);
 			invoice.get().setApproverPreferenceId(approverPreferenceId);
-
+			
 			String levelToFindRole = "L1";
 			if (AppConstants.APPROVAL_TYPE_INDIVIDUAL.equals(approvalPreference.getApprovalType())) {
 				levelToFindRole = level;
 			}
-			approvalRequest = this.masterServiceClient.findApproverByLevelAndSequence(approverPreferenceId,
-					levelToFindRole, sequenceId);
+			approvalRequest = this.masterServiceClient.findApproverByLevelAndSequence(approverPreferenceId, levelToFindRole, sequenceId);
 
 			this.updateApproverDetailsInInvoice(invoice, approvalRequest);
 			invoice.get().setInvStatus(TransactionStatus.PENDING_APPROVAL.getTransactionStatus());
 			log.info("Approver is found and details is updated for Invoice :: " + invoice.get());
-
+			
 			this.saveInvoiceForApproval(invoice.get(), oldInvoice);
 			log.info("Invoice is saved successfully with Approver details.");
 
 			masterServiceClient.sendEmailByApproverId(invoice.get().getNextApprover(), FormNames.INVOICE.getFormName());
-
+			
 			isSentForApproval = true;
 		} catch (Exception e) {
 			log.error("Error while sending PR for approval for id - " + id);
 			e.printStackTrace();
-			throw new CustomMessageException(
-					"Error while sending PO for approval for id - " + id + ", Message : " + e.getLocalizedMessage());
+			throw new CustomMessageException("Error while sending PO for approval for id - " + id + ", Message : " + e.getLocalizedMessage());
 		}
-
+		
 		return isSentForApproval;
 	}
-
+	
 	/**
 	 * Save Invoice after the approval details change
-	 * 
 	 * @param invoice
 	 */
 	private void saveInvoiceForApproval(Invoice invoice, Optional<Invoice> oldInvoice) {
 		invoice.setLastModifiedBy(CommonUtils.getLoggedInUsername());
 		invoice = this.invoiceRepository.save(invoice);
-
+		
 		if (invoice == null) {
 			log.info("Error while saving the Invoice after the Approval.");
 			throw new CustomMessageException("Error while saving the Invoice after the Approval.");
 		}
 		log.info("Invoice saved successfully :: " + invoice.getInvoiceNo());
-
+		
 		// update the data in Invoice history table
 		this.updateInvoiceHistory(invoice, oldInvoice);
-		log.info("Invoice history is updated");
+		log.info("Invoice history is updated");		
 	}
 
 	/**
@@ -686,10 +706,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 		return invoice;
 	}
-
+	
 	/**
 	 * Find PO by it's ID
-	 * 
 	 * @param id
 	 * @return
 	 */
@@ -705,7 +724,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		log.info("Invoice is found against the Invoice-ID :: " + id);
 		return invoice;
 	}
-
+	
 	private boolean findIsApprovalRoutingActive(Long subsidiaryId) {
 		return this.masterServiceClient.findIsApprovalRoutingActive(subsidiaryId, FormNames.INVOICE.getFormName());
 	}
@@ -718,8 +737,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 				log.info("Approval Process is started for po-id :: " + poId);
 
 				/**
-				 * Due to single transaction we are getting updated value when we find from repo
-				 * after the update hence finding old one first
+				 * Due to single transaction we are getting updated value when we find from repo after the update
+				 * hence finding old one first
 				 */
 				// Get the existing object using the deep copy
 				Optional<Invoice> oldInvoice = this.findOldDeepCopiedInvoice(poId);
@@ -732,25 +751,21 @@ public class InvoiceServiceImpl implements InvoiceService {
 				 */
 				boolean isRoutingActive = invoice.get().isApprovalRoutingActive();
 				if (!isRoutingActive) {
-					log.error(
-							"Routing is not active for the Invoice : " + poId + ". Please update your configuration. ");
-					throw new CustomMessageException(
-							"Routing is not active for the Invoice : " + poId + ". Please update your configuration. ");
+					log.error("Routing is not active for the Invoice : " + poId + ". Please update your configuration. ");
+					throw new CustomMessageException("Routing is not active for the Invoice : " + poId + ". Please update your configuration. ");
 				}
-
+				
 				// meta data
 				Long approvalPreferenceId = invoice.get().getApproverPreferenceId();
 				Long sequenceId = invoice.get().getApproverSequenceId();
 				String maxLevel = invoice.get().getApproverMaxLevel();
-
+				
 				ApprovalRequest approvalRequest = new ApprovalRequest();
-
+				
 				if (!maxLevel.equals(invoice.get().getNextApproverLevel())) {
-					Long currentLevelNumber = Long.parseLong(invoice.get().getNextApproverLevel().replaceFirst("L", ""))
-							+ 1;
+					Long currentLevelNumber = Long.parseLong(invoice.get().getNextApproverLevel().replaceFirst("L", "")) + 1;
 					String currentLevel = "L" + currentLevelNumber;
-					approvalRequest = this.masterServiceClient.findApproverByLevelAndSequence(approvalPreferenceId,
-							currentLevel, sequenceId);
+					approvalRequest = this.masterServiceClient.findApproverByLevelAndSequence(approvalPreferenceId, currentLevel, sequenceId);
 					invoice.get().setInvStatus(TransactionStatus.PARTIALLY_APPROVED.getTransactionStatus());
 				} else {
 					invoice.get().setInvStatus(TransactionStatus.APPROVED.getTransactionStatus());
@@ -759,15 +774,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 				this.updateApproverDetailsInInvoice(invoice, approvalRequest);
 				log.info("Approver is found and details is updated :: " + invoice.get());
-
+				
 				this.saveInvoiceForApproval(invoice.get(), oldInvoice);
 				log.info("Invoice is saved successfully with Approver details.");
 
-				masterServiceClient.sendEmailByApproverId(invoice.get().getNextApprover(),
-						FormNames.INVOICE.getFormName());
+				masterServiceClient.sendEmailByApproverId(invoice.get().getNextApprover(), FormNames.INVOICE.getFormName());
 				log.info("Approval Process is Finished for Invoice :: " + invoice.get().getInvoiceNo());
 			}
-
+			
 			isAllPoApproved = true;
 		} catch (Exception e) {
 			log.error("Error while approving the Invoice.");
@@ -795,8 +809,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			return this.importPrsFromExcel(file);
 		} catch (Exception e) {
 			e.printStackTrace();
-			throw new CustomException(
-					"Something went wrong. Please Contact Administrator. Error : " + e.getLocalizedMessage());
+			throw new CustomException("Something went wrong. Please Contact Administrator. Error : " + e.getLocalizedMessage());
 		}
 	}
 
@@ -883,13 +896,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 						if (subsidiaryId == null) {
 							errorMessage.append(errorCount + ") Subsidiary : " + name
 									+ " is not found Please enter the valid Subsidiary Name. ");
-							log.error(
-									"Subsidiary : " + name + " is not found. Please enter the valid Subsidiary Name. ");
+							log.error("Subsidiary : " + name
+									+ " is not found. Please enter the valid Subsidiary Name. ");
 							isError = true;
 							errorCount++;
 						} else {
 							invoice.setSubsidiaryId(subsidiaryId);
-							invoice.setCurrency(this.setupServiceClient.findCurrencyBySubsidiaryName(name));
+							invoice.setCurrency(
+									this.setupServiceClient.findCurrencyBySubsidiaryName(name));
 						}
 					} else {
 						errorMessage.append(errorCount + ") Subsidiary is required. ");
@@ -989,8 +1003,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 						String locationName = inputCurrentRow.getCell(7).getStringCellValue();
 						List<Location> locations = this.masterServiceClient.getLocationsByLocationName(locationName);
 						Long locationId = null;
-						if (CollectionUtils.isNotEmpty(locations))
-							locationId = locations.get(0).getId();
+						if (CollectionUtils.isNotEmpty(locations)) locationId = locations.get(0).getId(); 
 						else {
 							errorMessage.append(errorCount + ") Location is not valid.");
 							log.error("Location is not valid.");
@@ -1021,7 +1034,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					isError = true;
 					errorCount++;
 				}
-
+				
 				// Exchange Rate
 				try {
 					if (inputCurrentRow.getCell(10) != null) {
@@ -1058,14 +1071,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 //					isError = true;
 //					errorCount++;
 //				}
-
+				
 				// item code
 				try {
 					if (inputCurrentRow.getCell(12) != null) {
 						String itemCode = inputCurrentRow.getCell(12).getStringCellValue();
 						invoiceItem.setItemName(itemCode);
 						Item item = this.masterServiceClient.findByName(itemCode);
-						if (item != null) {
+						if (item!=null) {
 							invoiceItem.setItemId(item.getId());
 							invoiceItem.setItemUom(item.getUom());
 							invoiceItem.setItemDescription(item.getDescription());
@@ -1086,33 +1099,33 @@ public class InvoiceServiceImpl implements InvoiceService {
 					if (inputCurrentRow.getCell(13) != null) {
 						double quantity = inputCurrentRow.getCell(13).getNumericCellValue();
 						invoiceItem.setBillQty(quantity);
-					}
+					} 
 				} catch (Exception e) {
 					log.error("Exception quantity " + e.getLocalizedMessage());
 					errorMessage.append(errorCount + ") Value of quantity is invalid.");
 					isError = true;
 					errorCount++;
 				}
-
-				// rate
+				
+				//rate
 				try {
 					if (inputCurrentRow.getCell(14) != null) {
 						double rate = inputCurrentRow.getCell(14).getNumericCellValue();
 						invoiceItem.setRate(rate);
-					}
+					} 
 				} catch (Exception e) {
 					log.error("Exception rate " + e.getLocalizedMessage());
 					errorMessage.append(errorCount + ") Value of rate is invalid.");
 					isError = true;
 					errorCount++;
 				}
-
-				// tax group
+				
+				//tax group 
 				try {
 					if (inputCurrentRow.getCell(15) != null) {
-						String taxGroupName = inputCurrentRow.getCell(15).getStringCellValue();
+						String taxGroupName = inputCurrentRow.getCell(15).getStringCellValue();						
 						TaxGroup taxGroup = this.setupServiceClient.findByTaxGroupName(taxGroupName);
-						if (taxGroup != null) {
+						if (taxGroup!=null) {
 							invoiceItem.setTaxGroupId(taxGroup.getId());
 						} else {
 							invoiceItem.setTaxGroupId(null);
@@ -1124,19 +1137,19 @@ public class InvoiceServiceImpl implements InvoiceService {
 					isError = true;
 					errorCount++;
 				}
-				// depertment
+				//depertment
 				try {
 					if (inputCurrentRow.getCell(16) != null) {
-						String depertment = inputCurrentRow.getCell(16).getStringCellValue();
+						String depertment = inputCurrentRow.getCell(16).getStringCellValue();	
 						invoiceItem.setDepartment(depertment);
-					}
+					} 
 				} catch (Exception e) {
 					log.error("Exception depertment " + e.getLocalizedMessage());
 					errorMessage.append(errorCount + ") Value of depertment is invalid.");
 					isError = true;
 					errorCount++;
 				}
-
+				
 				List<InvoiceItem> invoiceItems = new ArrayList<InvoiceItem>();
 				invoiceItems = invoice.getInvoiceItems();
 				if (CollectionUtils.isEmpty(invoiceItems))
@@ -1144,17 +1157,16 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 				invoiceItems.add(invoiceItem);
 				invoiceItems = invoiceItems.stream().distinct().collect(Collectors.toList());
-
+				
 				invoice.setInvoiceItems(invoiceItems);
-				// invoice line finished
-
+				//invoice line finished
+				
 				// Bill to address -- REQUIRED
 				try {
 					if (inputCurrentRow.getCell(17) != null) {
 						String billingAddressCode = inputCurrentRow.getCell(17).getStringCellValue();
-
-						List<SupplierAddress> addresses = this.masterServiceClient
-								.findAddressBySupplierIdAndAddressCode(supplierId, billingAddressCode);
+						
+						List<SupplierAddress> addresses = this.masterServiceClient.findAddressBySupplierIdAndAddressCode(supplierId, billingAddressCode);
 						if (CollectionUtils.isEmpty(addresses)) {
 							errorMessage.append(errorCount + ") Billing Address Code is not exist. ");
 							log.error("Billing Address Code is not exist.");
@@ -1162,8 +1174,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 							errorCount++;
 						} else {
 							String billTo = addresses.get(0).getId().toString();
-							// invoice.setBillToId(billTo);
-							// String billToAdress = addresses.get(0).getAddress1();
+							//invoice.setBillToId(billTo);
+							//String billToAdress = addresses.get(0).getAddress1();
 							invoice.setBillTo(billTo);
 							invoice.setTaxRegNumber(addresses.get(0).getTaxRegistrationNumber());
 						}
@@ -1179,14 +1191,13 @@ public class InvoiceServiceImpl implements InvoiceService {
 					isError = true;
 					errorCount++;
 				}
-
+				
 				// Shipping Address
 				try {
 					if (inputCurrentRow.getCell(18) != null) {
 						String shippingAddressCode = inputCurrentRow.getCell(18).getStringCellValue();
-
-						List<SupplierAddress> addresses = this.masterServiceClient
-								.findAddressBySupplierIdAndAddressCode(supplierId, shippingAddressCode);
+						
+						List<SupplierAddress> addresses = this.masterServiceClient.findAddressBySupplierIdAndAddressCode(supplierId, shippingAddressCode);
 						if (CollectionUtils.isEmpty(addresses)) {
 							errorMessage.append(errorCount + ") Shipping Address Code is not exist. ");
 							log.error("Shipping Address Code is not exist.");
@@ -1194,8 +1205,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 							errorCount++;
 						} else {
 							String shipTo = addresses.get(0).getId().toString();
-							// invoice.setShipToId(shipTo);
-							// String shipToAdress = addresses.get(0).getAddress1();
+							//invoice.setShipToId(shipTo);
+							//String shipToAdress = addresses.get(0).getAddress1();
 							invoice.setShipTo(shipTo);
 						}
 					} else {
@@ -1209,7 +1220,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 					errorMessage.append(errorCount + ") Value of Shipping Address Code is invalid.");
 					isError = true;
 					errorCount++;
-
+					
+					
 				}
 				// ADDED IN MAP
 				invoiceMapping.put(externalId, invoice);
@@ -1223,14 +1235,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 				} else {
 					cell.setCellValue("Imported");
 				}
-			}
+			}	
 			for (Map.Entry<String, Invoice> map : invoiceMapping.entrySet()) {
-				log.info(map.getKey() + " ==== >>> " + map.getValue());
-				Invoice invoice = map.getValue();
-				if (invoice != null && !invoice.isHasError()) {
+			    log.info(map.getKey() + " ==== >>> " + map.getValue());
+			    Invoice invoice = map.getValue();
+			    if (invoice != null && !invoice.isHasError()) {
 					this.saveInvoice(invoice);
 					log.info("invoice is saved.");
-				}
+			    }
 			}
 
 			FileOutputStream out = null;
@@ -1259,28 +1271,26 @@ public class InvoiceServiceImpl implements InvoiceService {
 	@Override
 	public List<Invoice> getIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, java.sql.Date startDate,
 			java.sql.Date endDate) {
-		List<Invoice> optInvoice = invoiceRepository
-				.findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(subsidiaryId, null, startDate, endDate);
+		List<Invoice> optInvoice = invoiceRepository.findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(
+				subsidiaryId, null, startDate, endDate);
 		return optInvoice;
 	}
 
 	@Override
 	public Boolean selfApprove(Long invoiceId) {
 		Optional<Invoice> invoice = this.invoiceRepository.findByInvoiceId(invoiceId);
-
+		
 		if (!invoice.isPresent()) {
 			log.error("Invoice Not Found against given invoice id : " + invoiceId);
 			throw new CustomMessageException("Invoice Not Found against given invoice id : " + invoiceId);
 		}
 		invoice.get().setInvStatus(TransactionStatus.APPROVED.getTransactionStatus());
 		invoice.get().setLastModifiedBy(CommonUtils.getLoggedInUsername());
-
-		if (this.invoiceRepository.save(invoice.get()) != null)
-			return true;
-		else
-			throw new CustomException("Error in self approve. Please contact System Administrator");
+		
+		if (this.invoiceRepository.save(invoice.get()) != null) return true;
+		else throw new CustomException("Error in self approve. Please contact System Administrator");
 	}
-
+	
 	@Override
 	public List<Invoice> getInvoiceApproval(String user) {
 		List<String> status = new ArrayList<String>();
@@ -1291,4 +1301,5 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoices;
 	}
 
+	
 }
