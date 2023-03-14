@@ -12,9 +12,9 @@ import com.monstarbill.finance.models.MakePayment;
 
 public interface MakePaymentRepository extends JpaRepository<MakePayment, String> {
 
-	Optional<MakePayment> findByIdAndIsDeleted(Long id, boolean isDeleted);
+	public Optional<MakePayment> findByIdAndIsDeleted(Long id, boolean isDeleted);
 
-	List<MakePayment> getByIdAndType(Long paymentId, String type);
+	public List<MakePayment> getByIdAndType(Long paymentId, String type);
 	
 	public List<MakePayment> findByIntegratedIdAndSubsidiaryIdAndIsDeletedAndCreatedDateBetween(String integratedId,
 			Long subsidiaryId, boolean isDeleted, Date startDate, Date endDate);
@@ -26,5 +26,7 @@ public interface MakePaymentRepository extends JpaRepository<MakePayment, String
 			+ " left join Employee e on CAST(e.id as text) = p.approvedBy  where p.paymentStatus in :status AND p.nextApprover = :user")
 	public List<MakePayment> getPaymentForApproval(@Param("status") List<String> status, @Param("user")String user);
 //	
+
+	public MakePayment getById(Long paymentId);
 
 }

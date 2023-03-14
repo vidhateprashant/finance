@@ -34,6 +34,9 @@ import com.monstarbill.finance.models.AdvancePaymentHistory;
 //import com.monstarbill.finance.models.ApprovalPreference;
 import com.monstarbill.finance.models.Invoice;
 import com.monstarbill.finance.models.InvoicePayment;
+import com.monstarbill.finance.models.MakePayment;
+import com.monstarbill.finance.models.MakePaymentInfo;
+import com.monstarbill.finance.models.MakePaymentList;
 import com.monstarbill.finance.payload.request.ApprovalRequest;
 import com.monstarbill.finance.payload.request.PaginationRequest;
 import com.monstarbill.finance.payload.response.ApprovalPreference;
@@ -43,6 +46,9 @@ import com.monstarbill.finance.repository.AdvancePaymentHistoryRepository;
 import com.monstarbill.finance.repository.AdvancePaymentRepository;
 import com.monstarbill.finance.repository.InvoicePaymentRepository;
 import com.monstarbill.finance.repository.InvoiceRepository;
+import com.monstarbill.finance.repository.MakePaymentInfoRepository;
+import com.monstarbill.finance.repository.MakePaymentListRepository;
+import com.monstarbill.finance.repository.MakePaymentRepository;
 import com.monstarbill.finance.service.AdvancePaymentService;
 //import com.monstarbill.finance.service.ApprovalPreferenceService;
 
@@ -57,7 +63,14 @@ public class AdvancePaymentServiceImpl implements AdvancePaymentService {
 	private AdvancePaymentRepository advancePaymentRepository;
 	
 	@Autowired
+	private MakePaymentListRepository makePaymentListRepository;
+	
+	@Autowired
 	private AdvancePaymentDao advancePaymentDao;
+	
+	@Autowired
+	private MakePaymentRepository makePaymentRepository;
+
 
 	@Autowired
 	private AdvancePaymentHistoryRepository advancePaymentHistoryRepository;
@@ -76,6 +89,9 @@ public class AdvancePaymentServiceImpl implements AdvancePaymentService {
 
 	@Autowired
 	private InvoicePaymentRepository invoicePaymentRepository;
+	
+	@Autowired
+	private MakePaymentInfoRepository makePaymentInfoRepository;
 	
 	@Override
 	public AdvancePayment save(AdvancePayment advancePayment) {
@@ -665,10 +681,46 @@ public class AdvancePaymentServiceImpl implements AdvancePaymentService {
 
 	@Override
 	public List<Invoice> findBySubsidiaryAndSuppplierAndCurrency(Long subsidiaryId, Long supplierId, String currency) {
+		 List<String> status = new ArrayList<String>();
+		 String statusApproved = TransactionStatus.APPROVED.getTransactionStatus();
+		 String partiallyPaid = TransactionStatus.PARTIALLY_PAID.getTransactionStatus();
+		 status.add(statusApproved);
+		 status.add(partiallyPaid);
 		List<Invoice> invoices = new ArrayList<Invoice>();
 		invoices = this.invoiceRepository
-				.getAllInvoiceBySubsidiaryIdAndSupplierIdAndCurrency( subsidiaryId, supplierId, currency);
+				.getAllInvoiceBySubsidiaryIdAndSupplierIdAndCurrencyAndInvStatus( subsidiaryId, supplierId, currency, status);
 		log.info("Get all invoice by subsidiaryId and supplierId and currency ." + invoices);
 		return invoices;
+	}
+
+	@Override
+	public String voidPayment(Long paymentId, String type) {
+		List<MakePaymentList> makePaymentLists = this.makePaymentListRepository.findByPaymentIdAndType(paymentId,type);
+		if(makePaymentLists.isEmpty()){
+			log.info("Id for the advance payment not found ");
+			throw new CustomException("Id for the advance payment not found");
+		}
+		for (MakePaymentList makePaymentList : makePaymentLists) {
+			MakePaymentInfo makePaymentInfo = this.makePaymentInfoRepository.getByMakePaymentId(makePaymentList.getPaymentId());
+			makePaymentInfo.setPaymentStatus(TransactionStatus.VOID.getTransactionStatus());
+			this.makePaymentInfoRepository.save(makePaymentInfo);
+			MakePayment makePayment = this.makePaymentRepository.getById(makePaymentList.getPaymentId());
+			makePayment.setStatus(TransactionStatus.VOID.getTransactionStatus());
+			this.makePaymentRepository.save(makePayment);
+			AdvancePayment advancePayment = this.advancePaymentRepository.findById(makePaymentList.getInvoiceId());
+			if(advancePayment.getPaymentAmount() > makePaymentList.getPaidAmount()) {
+				advancePayment.setStatus(TransactionStatus.PARTIALLY_PAID.getTransactionStatus());
+				advancePayment.setPaymentAmount(advancePayment.getPaymentAmount() - makePaymentList.getPaidAmount());
+				advancePayment.setUnappliedAmount(advancePayment.getUnappliedAmount() - makePaymentList.getPaidAmount());
+			}else {
+			advancePayment.setStatus(TransactionStatus.APPROVED.getTransactionStatus());
+			advancePayment.setPaymentAmount(0.0);
+			advancePayment.setUnappliedAmount(0.0);
+			}
+			this.advancePaymentRepository.save(advancePayment);
+			makePaymentList.setPaidAmount(0.0);
+		}
+		this.makePaymentListRepository.saveAll(makePaymentLists);
+		return "Payment voided succesfully";
 	}
 }

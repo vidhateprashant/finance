@@ -164,8 +164,8 @@ public class MakePaymentController {
 	}
 	
 	/**
-	 * soft delete the Document sequence by it's id
-	 * @param id
+	 * void payment
+	 * @param paymentId,type
 	 * @return
 	 */
 	@GetMapping("/delete")
@@ -262,4 +262,5 @@ public class MakePaymentController {
 		return ResponseEntity.ok(makePayment);
 
 	}
+
 }

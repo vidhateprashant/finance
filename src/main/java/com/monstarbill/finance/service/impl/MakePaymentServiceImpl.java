@@ -32,6 +32,7 @@ import com.monstarbill.finance.models.Invoice;
 import com.monstarbill.finance.models.InvoicePayment;
 import com.monstarbill.finance.models.MakePayment;
 import com.monstarbill.finance.models.MakePaymentHistory;
+import com.monstarbill.finance.models.MakePaymentInfo;
 import com.monstarbill.finance.models.MakePaymentList;
 import com.monstarbill.finance.models.Supplier;
 import com.monstarbill.finance.payload.request.ApprovalRequest;
@@ -43,6 +44,7 @@ import com.monstarbill.finance.repository.InvoicePaymentRepository;
 //import com.monster.bill.repository.AdvancePaymentRepository;
 import com.monstarbill.finance.repository.InvoiceRepository;
 import com.monstarbill.finance.repository.MakePaymentHistoryRepository;
+import com.monstarbill.finance.repository.MakePaymentInfoRepository;
 import com.monstarbill.finance.repository.MakePaymentListRepository;
 import com.monstarbill.finance.repository.MakePaymentRepository;
 import com.monstarbill.finance.service.MakePaymentService;
@@ -68,6 +70,9 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 
 	@Autowired
 	private MakePaymentListRepository makePaymentListRepository;
+	
+	@Autowired
+	private MakePaymentInfoRepository makePaymentInfoRepository;
 
 	@Autowired
 	private InvoicePaymentRepository invoicePaymentRepository;
@@ -80,6 +85,9 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 
 	@Autowired
 	private MasterServiceClient masterServiceClient;
+	
+//	@Autowired
+//	private AdvancePaymentApplyRepository advancePaymentApplyRepository;
 
 	@Override
 	public MakePayment save(MakePayment makePayment) {
@@ -123,7 +131,6 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 		// ------make payment list-----//
 		List<MakePaymentList> makePaymentLists = makePayment.getMakePaymentList();
 		List<InvoicePayment> invoicePaymentList = new ArrayList<>();
-
 		if (CollectionUtils.isNotEmpty(makePaymentLists)) {
 			for (MakePaymentList payment : makePaymentLists) {
 				invoice = this.invoiceRepository.findByInvoiceId(payment.getInvoiceId());
@@ -423,6 +430,7 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 		Optional<Invoice> invoice = Optional.empty();
 		List<InvoicePayment> invoicePayments = new ArrayList<InvoicePayment>();
 		invoicePayments = this.invoicePaymentRepository.getByPaymentIdAndType(paymentId, type);
+		
 		for (InvoicePayment invoicePayment : invoicePayments) {
 			// invoicePayment = this.getInvoicePaymentByPaymentId(paymentId);
 			log.info(" invoice payment list " + invoicePayment);
@@ -463,13 +471,18 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 					advancePayment.setUnappliedAmount(advancePayment.getAdvanceAmount());
 					advancePayment.setStatus(TransactionStatus.APPROVED.getTransactionStatus());
 				}
-				this.advancePaymentRepository.saveAll(advancePayments);
+//				this.advancePaymentRepository.saveAll(advancePayments);
+//				List<AdvancePaymentApply> advancePaymentApplies = this.advancePaymentApplyRepository.getByPrePaymentIdAndType(paymentId, type);
+//				for (AdvancePaymentApply advancePaymentApply : advancePaymentApplies) {
+//					
+//				}
 			}
 		}
 		invoicePayments = this.invoicePaymentRepository.saveAll(invoicePayments);
 		return invoicePayments;
 	}
 
+	
 	@Override
 	public @Valid MakePayment saveForAdvancePayment(@Valid MakePayment makePayment) {
 		AdvancePayment advancePayment = new AdvancePayment();
@@ -514,6 +527,18 @@ public class MakePaymentServiceImpl implements MakePaymentService {
 		if (CollectionUtils.isNotEmpty(makePaymentLists)) {
 			for (MakePaymentList makePaymentList : makePaymentLists) {
 				this.savedMakePaymentList(paymentId, makePaymentList, paymentNumber);
+		//------ saving makePaymentInfo  ----------//
+				MakePaymentInfo makePaymentInfo = new MakePaymentInfo();
+				makePaymentInfo.setAdvancePaymentId(makePaymentList.getInvoiceId());
+				makePaymentInfo.setMakePaymentId(makePayment.getId());
+				//makePaymentInfo.setPaymentDocNumber(makePayment.getPaymentNumber());
+				makePaymentInfo.setAmount(makePaymentList.getPaidAmount());
+				makePaymentInfo.setExchangeRate(makePayment.getExchangeRate());
+				makePaymentInfo.setPaymentDate(makePayment.getPaymentDate());
+				makePaymentInfo.setPaymentNumber(makePayment.getPaymentNumber());
+				makePaymentInfo.setPaymentStatus(makePayment.getStatus());
+				this.makePaymentInfoRepository.save(makePaymentInfo);
+			
 				advancePayment = this.advancePaymentRepository.findById(makePaymentList.getInvoiceId());
 				if (advancePayment == null) {
 					log.error("Advance Payment is not found against the provided value : "

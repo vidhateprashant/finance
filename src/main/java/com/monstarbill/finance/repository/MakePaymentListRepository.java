@@ -17,6 +17,10 @@ public interface MakePaymentListRepository extends JpaRepository<MakePaymentList
 
 	public List<MakePaymentList> getByPaymentIdAndType(Long paymentId, String type);
 
+	public List<MakePaymentList> findByInvoiceIdAndType(Long paymentId, String type);
+
+	public List<MakePaymentList> findByPaymentIdAndType(Long paymentId, String type);
+
 	
 
 }

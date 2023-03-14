@@ -33,8 +33,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
 	@Query(" select i from Invoice i where i.supplierId = :supplierId and i.currency = :currency and i.amountDue != 0.0 ")
 	List<Invoice> findBySupplierIdAndCurrency(Long supplierId, String currency);
 
-	List<Invoice> getAllInvoiceBySubsidiaryIdAndSupplierIdAndCurrency(@Param("subsidiaryId") Long subsidiaryId,@Param("supplierId") Long supplierId,
-			@Param("currency")String currency);
+	@Query(" select i from Invoice i where i.subsidiaryId = :subsidiaryId and i.supplierId = :supplierId and i.currency = :currency and i.invStatus in :status ")
+	List<Invoice> getAllInvoiceBySubsidiaryIdAndSupplierIdAndCurrencyAndInvStatus(@Param("subsidiaryId") Long subsidiaryId,@Param("supplierId") Long supplierId,
+			@Param("currency")String currency, @Param("status")List<String> status);
 
 
 	public List<Invoice> findBySubsidiaryIdAndIntegratedIdAndCreatedDateBetween(Long subsidiaryId, String integratedId,

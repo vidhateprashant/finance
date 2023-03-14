@@ -233,4 +233,17 @@ public class AdvancePaymentController {
 		}
 		return ResponseEntity.ok(invoices);
 	}
+	
+	/**
+	 * void payment
+	 * @param paymentId,type
+	 * @return
+	 */
+	@GetMapping("/void-payment-for-advance")
+	public ResponseEntity<String> voidPayment(@RequestParam Long paymentId, @RequestParam String type) {
+		log.info(" Delete Payment by ID :: " + paymentId);
+		String paymentDetalis = advancePaymentService.voidPayment(paymentId, type);
+		log.info("Delete Payment ID Completed.");
+		return new ResponseEntity<>(paymentDetalis, HttpStatus.OK);
+	}
 }

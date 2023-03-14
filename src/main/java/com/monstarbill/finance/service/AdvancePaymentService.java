@@ -40,4 +40,6 @@ public interface AdvancePaymentService {
 
 	public List<Invoice> findBySubsidiaryAndSuppplierAndCurrency(Long subsidiaryId, Long supplierId, String currency);
 
+	public String voidPayment(Long paymentId, String type);
+
 }
